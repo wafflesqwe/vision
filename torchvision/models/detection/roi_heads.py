@@ -757,6 +757,15 @@ class RoIHeads(torch.nn.Module):
                 "loss_box_reg": loss_box_reg
             }
         else:
+            #EDIT: also calculate loss in model.eval()
+            assert labels is not None and regression_targets is not None
+            loss_classifier, loss_box_reg = fastrcnn_loss(
+                class_logits, box_regression, labels, regression_targets)
+            losses = {
+                "loss_classifier": loss_classifier,
+                "loss_box_reg": loss_box_reg
+            }
+            #ORIGINAL
             boxes, scores, labels = self.postprocess_detections(class_logits, box_regression, proposals, image_shapes)
             num_images = len(boxes)
             for i in range(num_images):
@@ -781,6 +790,17 @@ class RoIHeads(torch.nn.Module):
                     mask_proposals.append(proposals[img_id][pos])
                     pos_matched_idxs.append(matched_idxs[img_id][pos])
             else:
+                #EDIT: also calculate loss in model.eval()
+                assert matched_idxs is not None
+                # during training, only focus on positive boxes
+                num_images = len(proposals)
+                mask_proposals = []
+                pos_matched_idxs = []
+                for img_id in range(num_images):
+                    pos = torch.nonzero(labels[img_id] > 0).squeeze(1)
+                    mask_proposals.append(proposals[img_id][pos])
+                    pos_matched_idxs.append(matched_idxs[img_id][pos])
+                #ORIGINAL
                 pos_matched_idxs = None
 
             if self.mask_roi_pool is not None:
@@ -806,6 +826,20 @@ class RoIHeads(torch.nn.Module):
                     "loss_mask": rcnn_loss_mask
                 }
             else:
+                #EDIT: also calculate loss in model.eval()
+                assert targets is not None
+                assert pos_matched_idxs is not None
+                assert mask_logits is not None
+
+                gt_masks = [t["masks"] for t in targets]
+                gt_labels = [t["labels"] for t in targets]
+                rcnn_loss_mask = maskrcnn_loss(
+                    mask_logits, mask_proposals,
+                    gt_masks, gt_labels, pos_matched_idxs)
+                loss_mask = {
+                    "loss_mask": rcnn_loss_mask
+                }
+                #ORIGINAL
                 labels = [r["labels"] for r in result]
                 masks_probs = maskrcnn_inference(mask_logits, labels)
                 for mask_prob, r in zip(masks_probs, result):
@@ -848,6 +882,18 @@ class RoIHeads(torch.nn.Module):
                     "loss_keypoint": rcnn_loss_keypoint
                 }
             else:
+                #EDIT: also calculate loss in model.eval()
+                assert targets is not None
+                assert pos_matched_idxs is not None
+
+                gt_keypoints = [t["keypoints"] for t in targets]
+                rcnn_loss_keypoint = keypointrcnn_loss(
+                    keypoint_logits, keypoint_proposals,
+                    gt_keypoints, pos_matched_idxs)
+                loss_keypoint = {
+                    "loss_keypoint": rcnn_loss_keypoint
+                }
+                #ORIGINAL
                 assert keypoint_logits is not None
                 assert keypoint_proposals is not None
 
